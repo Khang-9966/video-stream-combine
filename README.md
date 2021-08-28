@@ -2,7 +2,6 @@
 
 # OpenCV FFMpeg RTMP Stream
 
-https://github.com/thonatos/notes/blob/master/backend-notes/install-and-conf-nginx-with-rtmp-on-osx.md
 
 Example of live video streaming over RTMP protocol using OpenCV and FFMpeg.
 
@@ -17,6 +16,9 @@ On MacOS.
 ```sh
 brew install ffmpeg
 ```
+Install nginx.
+
+https://github.com/thonatos/notes/blob/master/backend-notes/install-and-conf-nginx-with-rtmp-on-osx.md
 
 On Ubuntu Linux.
 
