@@ -4,6 +4,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/video.hpp>
 #include "clipp.h"
+#include <unistd.h>
 
 extern "C"
 {
@@ -27,6 +28,20 @@ cv::VideoCapture get_device(int camID, double width, double height)
   cam.set(cv::CAP_PROP_FRAME_WIDTH, width);
   cam.set(cv::CAP_PROP_FRAME_HEIGHT, height);
 
+  return cam;
+}
+
+cv::VideoCapture get_stream_device(std::string video_url, double width, double height)
+{
+  cv::VideoCapture cam(video_url);
+  if (!cam.isOpened())
+  {
+    std::cout << "Failed to open video capture device!" << std::endl;
+    exit(1);
+  }
+
+  cam.set(cv::CAP_PROP_FRAME_WIDTH, width);
+  cam.set(cv::CAP_PROP_FRAME_HEIGHT, height);
   return cam;
 }
 
@@ -144,7 +159,7 @@ void write_frame(AVCodecContext *codec_ctx, AVFormatContext *fmt_ctx, AVFrame *f
   av_packet_unref(&pkt);
 }
 
-void stream_video(double width, double height, int fps, int camID, int bitrate, std::string codec_profile, std::string server)
+void stream_video(double width, double height, int fps, int camID, std::string streamURL_1, std::string streamURL_2, int bitrate, std::string codec_profile, std::string server)
 {
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 9, 100)
   av_register_all();
@@ -153,9 +168,12 @@ void stream_video(double width, double height, int fps, int camID, int bitrate, 
 
   const char *output = server.c_str();
   int ret;
-  auto cam = get_device(camID, width, height);
+  auto cam_1 = get_stream_device(streamURL_1, width, height);
+  auto cam_2 = get_stream_device(streamURL_2, width, height);
   std::vector<uint8_t> imgbuf(height * width * 3 + 16);
-  cv::Mat image(height, width, CV_8UC3, imgbuf.data(), width * 3);
+  cv::Mat image(height, width , CV_8UC3, imgbuf.data(), width * 3);
+
+
   AVFormatContext *ofmt_ctx = nullptr;
   AVCodec *out_codec = nullptr;
   AVStream *out_stream = nullptr;
@@ -192,11 +210,54 @@ void stream_video(double width, double height, int fps, int camID, int bitrate, 
   bool end_of_stream = false;
   do
   {
-    cam >> image;
+    cv::Mat3b frame_image_1;
+    cv::Mat3b frame_image_2;
+
+    cam_1 >> frame_image_1;
+    cam_2 >> frame_image_2;
+
+    //  _________
+    // |    |    |
+    // |_1__|    |
+    // |         |
+    // |_________|   
+
+    frame_image_1.copyTo(image(cv::Rect(0, 0, frame_image_1.cols, frame_image_1.rows))); 
+
+    //  _________
+    // |    |    |
+    // |_1__|_2__|
+    // |         |
+    // |_________|    
+    frame_image_2.copyTo(image(cv::Rect(frame_image_1.size().width, 0, frame_image_2.cols, frame_image_2.rows)));
+
+    // //  _________
+    // // |    |    |
+    // // |_1__|_2__|
+    // // |    |    |
+    // // |_3__|____|    
+    // img3.copyTo(dst_img(cv::Rect(0, 
+    //                              std::max(img1.size().height, img2.size().height), 
+    //                              img3.cols, 
+    //                              img3.rows)));
+
+    // //  _________
+    // // |    |    |
+    // // |_1__|_2__|
+    // // |    |    |
+    // // |_3__|_4__|    
+    // img4.copyTo(dst_img(cv::Rect(img3.size().width, 
+    //                              std::max(img1.size().height, img2.size().height), 
+    //                              img4.cols, 
+    //                              img4.rows)));
+
+    //resize(twoimagecombine, image, cv::Size(width, height), cv::INTER_LINEAR);
+
     const int stride[] = {static_cast<int>(image.step[0])};
     sws_scale(swsctx, &image.data, stride, 0, image.rows, frame->data, frame->linesize);
     frame->pts += av_rescale_q(1, out_codec_ctx->time_base, out_stream->time_base);
     write_frame(out_codec_ctx, ofmt_ctx, frame);
+    usleep(1000000/fps);
   } while (!end_of_stream);
 
   av_write_trailer(ofmt_ctx);
@@ -209,12 +270,16 @@ void stream_video(double width, double height, int fps, int camID, int bitrate, 
 
 int main(int argc, char *argv[])
 {
-  int cameraID = 0, fps = 30, width = 800, height = 600, bitrate = 300000;
+  int cameraID = 0, fps = 30, width = 1280*2, height = 720, bitrate = 300000;
   std::string h264profile = "high444";
   std::string outputServer = "rtmp://localhost/live/stream";
+  std::string streamURL_1 = "https://wowza03.giamsat247.vn:4935/live/cam15-new.stream/playlist.m3u8";
+  std::string streamURL_2 = "https://wowza03.giamsat247.vn:4935/live/cam13-new.stream/playlist.m3u8";
   bool dump_log = false;
 
   auto cli = ((option("-c", "--camera") & value("camera", cameraID)) % "camera ID (default: 0)",
+              (option("-v1", "--video") & value("video stream", streamURL_1)) % "Stream url (default: )",
+              (option("-v2", "--video") & value("video stream", streamURL_2)) % "Stream url (default: )",
               (option("-o", "--output") & value("output", outputServer)) % "output RTMP server (default: rtmp://localhost/live/stream)",
               (option("-f", "--fps") & value("fps", fps)) % "frames-per-second (default: 30)",
               (option("-w", "--width") & value("width", width)) % "video width (default: 800)",
@@ -234,7 +299,7 @@ int main(int argc, char *argv[])
     av_log_set_level(AV_LOG_DEBUG);
   }
 
-  stream_video(width, height, fps, cameraID, bitrate, h264profile, outputServer);
+  stream_video(width, height, fps, cameraID, streamURL_1, streamURL_2, bitrate, h264profile, outputServer);
 
   return 0;
 }
