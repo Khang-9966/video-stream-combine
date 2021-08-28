@@ -221,7 +221,6 @@ void stream_video(double width, double height, int fps, int camID, std::string s
     // |_1__|    |
     // |         |
     // |_________|   
-
     frame_image_1.copyTo(image(cv::Rect(0, 0, frame_image_1.cols, frame_image_1.rows))); 
 
     //  _________
@@ -231,6 +230,7 @@ void stream_video(double width, double height, int fps, int camID, std::string s
     // |_________|    
     frame_image_2.copyTo(image(cv::Rect(frame_image_1.size().width, 0, frame_image_2.cols, frame_image_2.rows)));
 
+    
     // //  _________
     // // |    |    |
     // // |_1__|_2__|
